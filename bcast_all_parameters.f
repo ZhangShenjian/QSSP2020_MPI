@@ -1,9 +1,9 @@
       subroutine bcast_all_parameters()
 
-      use my_mpi
+      use mpi
+      use qpalloc
       implicit none
 c
-      include 'qpglobal.h'
       integer*4 myrank,ierr
       integer*4 nparam_i
       parameter(nparam_i=17)
@@ -23,12 +23,12 @@ c     initialize
 c
 c     master process
       if(myrank .eq. 0) then
-          bcast_integer = (/ngrn,nt,ntcut,ntcutout,nf,nfcut,nbpf
-     & lyadd,ipatha,ipathb,ldeggr,ldegmin,ldegcut,ldegmax
+          bcast_integer = (/ngrn,nt,ntcut,ntcutout,nf,nfcut,nbpf,
+     & lyadd,ipatha,ipathb,ldeggr,ldegmin,ldegcut,ldegmax,
      & nr,ns,l0/)
-          bcast_real = (/dt,dtout,df,fi,fcut,fgr,rratmos,depatmos
-     & rearth,rr0,minpath,maxpath
-     & slwmax,slwlwcut,slwupcut,f1corner,f2corner
+          bcast_real = (/dt,dtout,df,fi,fcut,fgr,rratmos,depatmos,
+     & rearth,rr0,minpath,maxpath,
+     & slwmax,slwlwcut,slwupcut,f1corner,f2corner,
      & dpr,qsmin,togsmin/)
           bcast_logical = (/selpsv,selsh,nogravity,freesurf,
      & dispersion/)
@@ -39,51 +39,6 @@ c
       call bcast_all_l(bcast_logical, nparam_l)
 c
       call bcast_all_i(icmp, 11)
-c
-      call bcast_all_i(grnsel, ngrn)
-      call bcast_all_i(isg1, ngrn)
-      call bcast_all_i(isg2, ngrn)
-      call bcast_all_i(nsg, ngrn)
-c
-      call bcast_all_r(latr, nr)
-      call bcast_all_r(lonr, nr)
-      call bcast_all_r(tredr, nr)
-      call bcast_all_r(grndep, ngrn)
-c
-      call bcast_all_r(sfr, ns)
-      call bcast_all_r(sft, ns)
-      call bcast_all_r(sfp, ns)
-      call bcast_all_r(mtt, ns)
-      call bcast_all_r(mpp, ns)
-      call bcast_all_r(mrr, ns)
-      call bcast_all_r(mtp, ns)
-      call bcast_all_r(mpr, ns)
-      call bcast_all_r(mrt, ns)
-      call bcast_all_r(lats, ns)
-      call bcast_all_r(lons, ns)
-      call bcast_all_r(deps, ns)
-      call bcast_all_r(togs, ns)
-      call bcast_all_r(trss, ns)
-c
-      call bcast_all_r(dp0, l0)
-      call bcast_all_r(vp0, l0)
-      call bcast_all_r(vs0, l0)
-      call bcast_all_r(ro0, l0)
-      call bcast_all_r(qp0, l0)
-      call bcast_all_r(qs0, l0)
-c
-      call bcast_all_r(dp0up, l0)
-      call bcast_all_r(vp0up, l0)
-      call bcast_all_r(vs0up, l0)
-      call bcast_all_r(ro0up, l0)
-      call bcast_all_r(qp0up, l0)
-      call bcast_all_r(qs0up, l0)
-      call bcast_all_r(dp0lw, l0)
-      call bcast_all_r(vp0lw, l0)
-      call bcast_all_r(vs0lw, l0)
-      call bcast_all_r(ro0lw, l0)
-      call bcast_all_r(qp0lw, l0)
-      call bcast_all_r(qs0lw, l0)
 c 
       if(myrank .ne. 0) then
           ngrn = bcast_integer(1)
@@ -125,12 +80,61 @@ c
           qsmin = bcast_real(19)
           togsmin = bcast_real(20)
 c
-          bcast_logical = (/selpsv,selsh,nogravity,freesurf,
-     & dispersion/)
           selpsv = bcast_logical(1)
           selsh = bcast_logical(2)
           nogravity = bcast_logical(3)
           freesurf = bcast_logical(4)
           dispersion = bcast_logical(5)
+c
+          call qplocalinit()
       endif
+c
+
+      call bcast_all_i(grnsel, ngrn)
+      call bcast_all_i(isg1, ngrn)
+      call bcast_all_i(isg2, ngrn)
+      call bcast_all_i(nsg, ngrn)
+c
+      call bcast_all_r(latr, nr)
+      call bcast_all_r(lonr, nr)
+      call bcast_all_r(tred, nr)
+      call bcast_all_r(grndep, ngrn)
+c
+      call bcast_all_r(sfr, ns)
+      call bcast_all_r(sft, ns)
+      call bcast_all_r(sfp, ns)
+      call bcast_all_r(mtt, ns)
+      call bcast_all_r(mpp, ns)
+      call bcast_all_r(mrr, ns)
+      call bcast_all_r(mtp, ns)
+      call bcast_all_r(mpr, ns)
+      call bcast_all_r(mrt, ns)
+      call bcast_all_r(lats, ns)
+      call bcast_all_r(lons, ns)
+      call bcast_all_r(deps, ns)
+      call bcast_all_r(togs, ns)
+      call bcast_all_r(trss, ns)
+c
+      call bcast_all_r(dp0, l0)
+      call bcast_all_r(vp0, l0)
+      call bcast_all_r(vs0, l0)
+      call bcast_all_r(ro0, l0)
+      call bcast_all_r(qp0, l0)
+      call bcast_all_r(qs0, l0)
+c
+      call bcast_all_r(dp0up, l0)
+      call bcast_all_r(vp0up, l0)
+      call bcast_all_r(vs0up, l0)
+      call bcast_all_r(ro0up, l0)
+      call bcast_all_r(qp0up, l0)
+      call bcast_all_r(qs0up, l0)
+      call bcast_all_r(dp0lw, l0)
+      call bcast_all_r(vp0lw, l0)
+      call bcast_all_r(vs0lw, l0)
+      call bcast_all_r(ro0lw, l0)
+      call bcast_all_r(qp0lw, l0)
+      call bcast_all_r(qs0lw, l0)
+      
+      write(*,*)"grnsel",grnsel(1),ngrn,myrank
+c
       end subroutine bcast_all_parameters

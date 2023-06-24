@@ -5,6 +5,8 @@
 c
       end module
 c
+c
+c
       subroutine bcast_all_i(buffer, countval)
       use my_mpi
       implicit none
@@ -16,7 +18,9 @@ c
      &     my_local_mpi_comm_world, ierr)
 c
       end subroutine bcast_all_i
-
+c
+c
+c
       subroutine bcast_all_r(buffer, countval)
       use my_mpi
       implicit none
@@ -28,7 +32,9 @@ c
      &     my_local_mpi_comm_world, ierr)
 c
       end subroutine bcast_all_r
-
+c
+c
+c
       subroutine bcast_all_l(buffer, countval)
       use my_mpi
       implicit none
@@ -40,13 +46,16 @@ c
      &     my_local_mpi_comm_world, ierr)
 c
       end subroutine bcast_all_l
-
+c
+c
+c
       subroutine synchronize_all()
       use my_mpi
-
+c
       integer*4 ierr
       call MPI_BARRIER(my_local_mpi_comm_world, ierr)
       if(ierr .ne. 0) then
           stop 'Error synchronize'
       endif
+c
       end subroutine synchronize_all

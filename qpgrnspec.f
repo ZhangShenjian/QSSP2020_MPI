@@ -1,15 +1,22 @@
       subroutine qpgrnspec(ig)
       use qpalloc
+      use mpi
       implicit none
       integer*4 ig
 c
       integer*4 i,nn,il,istp,ly,lf,ldeg,ldeg0,ldegf,ldegup,ierr
+      integer*4 nfapp,irank,lfs,ldegfs,ntotal,j,k
+      integer*4 myrank,numprocs,ierr_mpi
       real*8 f,ksp,xlw,xup,dll,omi,expo,rpath,slwcut
       real*8 fac,fl,depst1,depst2,dys2,rr0a,a,b,rrs,x
       real*8 kcut1(4),kcut2(4)
+      real*8 fs
       complex*16 ca,cb,cag,cs1,cs2,cs3,cs4,ct1,ct2,cll1
       complex*16 cmur,ys3d,yt1d,cg1,cg5
       complex*16 ypsv(6,4),ypsvg(6,4),ysh(2,2)
+      complex*16,allocatable :: ul0s(:),vl0s(:),wl0s(:)
+      complex*16,allocatable :: el0s(:),fl0s(:),gl0s(:)
+      complex*16,allocatable :: pl0s(:),ql0s(:)
       logical*2 forruku
 c
       real*8 fsimpson
@@ -18,6 +25,12 @@ c
       complex*16 c2,c3,c4
       data expos/48.d0/
       data c2,c3,c4/(2.d0,0.d0),(3.d0,0.d0),(4.d0,0.d0)/
+c
+c     MPI parameters
+c
+      call MPI_Comm_rank(MPI_COMM_WORLD, myrank, ierr_mpi)
+      call MPI_Comm_size(MPI_COMM_WORLD, numprocs, ierr_mpi)
+      write(*,*)"rank is",myrank
 c
       if(ig.eq.igfirst)then
         allocate(disk(0:ldegmax),stat=ierr)
@@ -129,14 +142,18 @@ c
         enddo
       endif
 c
-      open(21,file=uspecfile(ig),form='unformatted',status='unknown')
-      open(22,file=vspecfile(ig),form='unformatted',status='unknown')
-      open(23,file=wspecfile(ig),form='unformatted',status='unknown')
-      open(24,file=especfile(ig),form='unformatted',status='unknown')
-      open(25,file=fspecfile(ig),form='unformatted',status='unknown')
-      open(26,file=gspecfile(ig),form='unformatted',status='unknown')
-      open(27,file=pspecfile(ig),form='unformatted',status='unknown')
-      open(28,file=qspecfile(ig),form='unformatted',status='unknown')
+c     write on mater process
+c
+      if(myrank==0)then
+        open(21,file=uspecfile(ig),form='unformatted',status='unknown')
+        open(22,file=vspecfile(ig),form='unformatted',status='unknown')
+        open(23,file=wspecfile(ig),form='unformatted',status='unknown')
+        open(24,file=especfile(ig),form='unformatted',status='unknown')
+        open(25,file=fspecfile(ig),form='unformatted',status='unknown')
+        open(26,file=gspecfile(ig),form='unformatted',status='unknown')
+        open(27,file=pspecfile(ig),form='unformatted',status='unknown')
+        open(28,file=qspecfile(ig),form='unformatted',status='unknown')
+      endif
 c
       ldeg0=10+ndmax
       if(vsup(lys).gt.0.d0)then
@@ -207,19 +224,21 @@ c
         enddo
       endif
 c
-      write(*,*)' '
-      write(*,'(a,i3,a,f7.2,a)')' ... calculate Green functions for ',
-     &        ig,'. source at depth ',(grndep(ig)-depatmos)/KM2M,' km'
-	write(*,'(a,i5)')'   max. harmonic degree: L_max = ',ldegup
+      if(myrank==0)then
+        write(*,*)' '
+        write(*,'(a,i3,a,f7.2,a)')' ... calculate Green functions for '
+     &        ,ig,'. source at depth ',(grndep(ig)-depatmos)/KM2M,' km'
+	      write(*,'(a,i5)')'   max. harmonic degree: L_max = ',ldegup
 c
-      write(21)nt,ntcut,dt,nf,nfcut,df,ldegup
-      write(22)nt,ntcut,dt,nf,nfcut,df,ldegup
-      write(23)nt,ntcut,dt,nf,nfcut,df,ldegup
-      write(24)nt,ntcut,dt,nf,nfcut,df,ldegup
-      write(25)nt,ntcut,dt,nf,nfcut,df,ldegup
-      write(26)nt,ntcut,dt,nf,nfcut,df,ldegup
-      write(27)nt,ntcut,dt,nf,nfcut,df,ldegup
-      write(28)nt,ntcut,dt,nf,nfcut,df,ldegup
+        write(21)nt,ntcut,dt,nf,nfcut,df,ldegup
+        write(22)nt,ntcut,dt,nf,nfcut,df,ldegup
+        write(23)nt,ntcut,dt,nf,nfcut,df,ldegup
+        write(24)nt,ntcut,dt,nf,nfcut,df,ldegup
+        write(25)nt,ntcut,dt,nf,nfcut,df,ldegup
+        write(26)nt,ntcut,dt,nf,nfcut,df,ldegup
+        write(27)nt,ntcut,dt,nf,nfcut,df,ldegup
+        write(28)nt,ntcut,dt,nf,nfcut,df,ldegup
+      endif
 c
       if(.not.nogravity)then
         do ly=1,ly0
@@ -242,7 +261,16 @@ c
         enddo
       enddo
 c
-      do lf=1,nfcut
+c     Distribute freq.-array to each process
+c
+c     ensure evenly disivible
+      if(mod(nfcut,numprocs)==0)then
+        nfapp = nfcut
+      else
+        nfapp = (floor(float(nfcut)/float(numprocs))+1)*numprocs
+      endif
+c
+      do lf=myrank+1,nfapp,numprocs
         f=dble(lf-1)*df
         omi=PI2*f
         comi=dcmplx(PI2*f,PI2*fi)
@@ -707,36 +735,170 @@ c
           endif
         enddo
 c
-        write(*,'(i6,a,f12.4,a,i5,a,2(f7.2,a))')lf,'.',1.0d+03*f,
-     &       ' mHz: cut-off degree = ',ldegf,
-     &       ', start depth = ',depst1,' - ',depst2,' km'
+c       send all result to master process and write on master proc.
 c
-        write(21)ldegf
-        write(22)ldegf
-        write(23)ldegf
-        write(24)ldegf
-        write(25)ldegf
-        write(26)ldegf
-        write(27)ldegf
-        write(28)ldegf
-        write(21)((ul0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! Ypsv1
-        write(22)((vl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! Ypsv3
-        write(23)((wl0(ldeg,istp),ldeg=0,ldegf),istp=4,6)               ! Ysh1 (or Y7)
-        write(24)((el0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! Ypsv2
-        write(25)((fl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! Ypsv4
-        write(26)((gl0(ldeg,istp),ldeg=0,ldegf),istp=4,6)               ! Ysh2 (or Y8)
-        write(27)((pl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! Ypsv5
-        write(28)((ql0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! dYpsv5/dr
+c       initalize arrays for sending data
+        ntotal=(ldegmax+1)*6
+        allocate(ul0s(ntotal),stat=ierr)
+        if(ierr.ne.0)stop 'Error in qpgrnspec: ul0s not allocated!'
+        allocate(vl0s(ntotal),stat=ierr)
+        if(ierr.ne.0)stop 'Error in qpgrnspec: vl0s not allocated!'
+        allocate(wl0s(ntotal),stat=ierr)
+        if(ierr.ne.0)stop 'Error in qpgrnspec: wl0s not allocated!'
+        allocate(el0s(ntotal),stat=ierr)
+        if(ierr.ne.0)stop 'Error in qpgrnspec: el0s not allocated!'
+        allocate(fl0s(ntotal),stat=ierr)
+        if(ierr.ne.0)stop 'Error in qpgrnspec: fl0s not allocated!'
+        allocate(gl0s(ntotal),stat=ierr)
+        if(ierr.ne.0)stop 'Error in qpgrnspec: gl0s not allocated!'
+        allocate(pl0s(ntotal),stat=ierr)
+        if(ierr.ne.0)stop 'Error in qpgrnspec: pl0s not allocated!'
+        allocate(ql0s(ntotal),stat=ierr)
+        if(ierr.ne.0)stop 'Error in qpgrnspec: ql0s not allocated!'
+c
+        if(myrank==0) then
+c        write(*,*)ldegmax
+c       write result computed on master proc.        
+          write(*,'(i6,a,f12.4,a,i5,a,2(f7.2,a))')lf,'.',1.0d+03*f,
+     &         ' mHz: cut-off degree = ',ldegf,
+     &         ', start depth = ',depst1,' - ',depst2,' km'
+c
+          write(21)ldegf
+          write(22)ldegf
+          write(23)ldegf
+          write(24)ldegf
+          write(25)ldegf
+          write(26)ldegf
+          write(27)ldegf
+          write(28)ldegf
+          write(21)((ul0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! Ypsv1
+          write(22)((vl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! Ypsv3
+          write(23)((wl0(ldeg,istp),ldeg=0,ldegf),istp=4,6)               ! Ysh1 (or Y7)
+          write(24)((el0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! Ypsv2
+          write(25)((fl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! Ypsv4
+          write(26)((gl0(ldeg,istp),ldeg=0,ldegf),istp=4,6)               ! Ysh2 (or Y8)
+          write(27)((pl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! Ypsv5
+          write(28)((ql0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! dYpsv5/dr
+c       recevive results from other proc.
+          do irank=1,numprocs-1
+            call MPI_RECV(lfs,1,MPI_INT,irank,1,
+     &         MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(ldegfs,1,MPI_INT,irank,1,
+     &         MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(fs,1,MPI_DOUBLE_PRECISION,irank,1,
+     &         MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(depst1,1,MPI_DOUBLE_PRECISION,irank,1,
+     &         MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(depst2,1,MPI_DOUBLE_PRECISION,irank,1,
+     &         MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(ul0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         irank,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(vl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         irank,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(wl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         irank,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(el0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         irank,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(fl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         irank,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(gl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         irank,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(pl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         irank,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+            call MPI_RECV(ql0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         irank,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+c           write only when f<fcut
+            if(lfs .le. nfcut)then
+              do k=1,6
+                do j=0,ldegmax
+                  ul0(j,k)=ul0s(j+1+(k-1)*(ldegmax+1))
+                  vl0(j,k)=vl0s(j+1+(k-1)*(ldegmax+1))
+                  wl0(j,k)=wl0s(j+1+(k-1)*(ldegmax+1))
+                  el0(j,k)=el0s(j+1+(k-1)*(ldegmax+1))
+                  fl0(j,k)=fl0s(j+1+(k-1)*(ldegmax+1))
+                  gl0(j,k)=gl0s(j+1+(k-1)*(ldegmax+1))
+                  pl0(j,k)=pl0s(j+1+(k-1)*(ldegmax+1))
+                  ql0(j,k)=ql0s(j+1+(k-1)*(ldegmax+1))
+                enddo
+              enddo
+c             write result
+              write(*,'(i6,a,f12.4,a,i5,a,2(f7.2,a))')lfs,'.',
+     &         1.0d+03*fs,' mHz: cut-off degree = ',ldegfs,
+     &         ', start depth = ',depst1,' - ',depst2,' km'
+c
+              write(21)ldegfs
+              write(22)ldegfs
+              write(23)ldegfs
+              write(24)ldegfs
+              write(25)ldegfs
+              write(26)ldegfs
+              write(27)ldegfs
+              write(28)ldegfs
+              write(21)((ul0(ldeg,istp),ldeg=0,ldegfs),istp=1,6)               ! Ypsv1
+              write(22)((vl0(ldeg,istp),ldeg=0,ldegfs),istp=1,6)               ! Ypsv3
+              write(23)((wl0(ldeg,istp),ldeg=0,ldegfs),istp=4,6)               ! Ysh1 (or Y7)
+              write(24)((el0(ldeg,istp),ldeg=0,ldegfs),istp=1,6)               ! Ypsv2
+              write(25)((fl0(ldeg,istp),ldeg=0,ldegfs),istp=1,6)               ! Ypsv4
+              write(26)((gl0(ldeg,istp),ldeg=0,ldegfs),istp=4,6)               ! Ysh2 (or Y8)
+              write(27)((pl0(ldeg,istp),ldeg=0,ldegfs),istp=1,6)               ! Ypsv5
+              write(28)((ql0(ldeg,istp),ldeg=0,ldegfs),istp=1,6)               ! dYpsv5/dr
+            endif
+          enddo
+        else
+c         2D array to 1D array
+          do k=1,6
+            do j=0,ldegmax
+              ul0s(j+1+(k-1)*(ldegmax+1)) = ul0(j,k)
+              vl0s(j+1+(k-1)*(ldegmax+1)) = vl0(j,k)
+              wl0s(j+1+(k-1)*(ldegmax+1)) = wl0(j,k)
+              el0s(j+1+(k-1)*(ldegmax+1)) = el0(j,k)
+              fl0s(j+1+(k-1)*(ldegmax+1)) = fl0(j,k)
+              gl0s(j+1+(k-1)*(ldegmax+1)) = gl0(j,k)
+              pl0s(j+1+(k-1)*(ldegmax+1)) = pl0(j,k)
+              ql0s(j+1+(k-1)*(ldegmax+1)) = ql0(j,k)
+            enddo
+          enddo
+          call MPI_SEND(lf,1,MPI_INT,0,1,MPI_COMM_WORLD,ierr_mpi)
+          call MPI_SEND(ldegf,1,MPI_INT,0,1,
+     &         MPI_COMM_WORLD,ierr_mpi)
+          call MPI_SEND(f,1,MPI_DOUBLE_PRECISION,0,1,
+     &         MPI_COMM_WORLD,ierr_mpi)
+          call MPI_SEND(depst1,1,MPI_DOUBLE_PRECISION,0,1,
+     &         MPI_COMM_WORLD,ierr_mpi)
+          call MPI_SEND(depst2,1,MPI_DOUBLE_PRECISION,0,1,
+     &         MPI_COMM_WORLD,ierr_mpi)     
+          call MPI_SEND(ul0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         0,1,MPI_COMM_WORLD,ierr_mpi)
+          call MPI_SEND(vl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         0,1,MPI_COMM_WORLD,ierr_mpi)
+          call MPI_SEND(wl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         0,1,MPI_COMM_WORLD,ierr_mpi)
+          call MPI_SEND(el0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         0,1,MPI_COMM_WORLD,ierr_mpi)
+          call MPI_SEND(fl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         0,1,MPI_COMM_WORLD,ierr_mpi)
+          call MPI_SEND(gl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         0,1,MPI_COMM_WORLD,ierr_mpi)
+          call MPI_SEND(pl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         0,1,MPI_COMM_WORLD,ierr_mpi)
+          call MPI_SEND(ql0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &         0,1,MPI_COMM_WORLD,ierr_mpi)
+        endif
+c         barrier
+        call synchronize_all()
+        deallocate(ul0s,vl0s,wl0s,el0s,fl0s,gl0s,pl0s,ql0s)
       enddo
-      close(21)
-      close(22)
-      close(23)
-      close(24)
-      close(25)
-      close(26)
-      close(27)
-      close(28)
-c
+      if(myrank==0)then
+        close(21)
+        close(22)
+        close(23)
+        close(24)
+        close(25)
+        close(26)
+        close(27)
+        close(28)
+      endif
+c     
       if(ig.eq.iglast)then
         deallocate(disk)
         deallocate(xp,xs,xt,kp,ks,kt,cps,cpt)

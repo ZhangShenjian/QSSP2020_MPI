@@ -1,15 +1,22 @@
-	subroutine qpsublayer(ierr)
+	    subroutine qpsublayer(ierr)
       use qpalloc
-	implicit none
+      use mpi
+	    implicit none
       integer*4 ierr
 c
 c	work space
 c
-	integer*4 i,j,i0,l,ly,lya,lyb,lyp,ig,di0
+	    integer*4 i,j,i0,l,ly,lya,lyb,lyp,ig,di0
+      integer*4 myrank,numprocs,ierr_mpi
       real*8 f,h,dh,z,zz,slw,wvlcut,up,lw,uplw4,alfa,beta
-	real*8 rrs,rrr,dvp,dvs,ro1,dro,dqp,dqs,mass,gr0
+	    real*8 rrs,rrr,dvp,dvs,ro1,dro,dqp,dqs,mass,gr0
       real*8 bvn2
       logical*2 atmo,action
+c
+c     MPI parameters
+c
+      call MPI_Comm_rank(MPI_COMM_WORLD, myrank, ierr_mpi)
+      call MPI_Comm_size(MPI_COMM_WORLD, numprocs, ierr_mpi)
 c
       lymax=0
       do l=1,l0
@@ -682,14 +689,17 @@ c
         cypnorm(6,ly)=cga(ly)
       enddo
 c
-	write(*,'(9a)')'  No','      R(km)','   Vp(km/s)',
+      if(myrank==0)then
+	    write(*,'(9a)')'  No','      R(km)','   Vp(km/s)',
      &    '   Vs(km/s)',' Ro(g/cm^3)','      Qp',
      &    '      Qs',' g(m/s^2)'
+      endif
 c
       rrlw(ly0)=0.d0
 c
-	do ly=1,ly0
-	  write(*,1001)ly,rrup(ly)/1.d3,vpup(ly)/1.d3,vsup(ly)/1.d3,
+      if(myrank==0)then
+    	do ly=1,ly0
+	    write(*,1001)ly,rrup(ly)/1.d3,vpup(ly)/1.d3,vsup(ly)/1.d3,
      &               roup(ly)/1.d3,qpup(ly),qsup(ly),dreal(cgrup(ly))
         j=0
         do ig=1,ngrn
@@ -704,11 +714,12 @@ c
         else
           write(*,'(a3)')'   '
         endif
-	  write(*,1002)rrlw(ly)/1.d3,vplw(ly)/1.d3,vslw(ly)/1.d3,
+	    write(*,1002)rrlw(ly)/1.d3,vplw(ly)/1.d3,vslw(ly)/1.d3,
      &             rolw(ly)/1.d3,qplw(ly),qslw(ly),dreal(cgrlw(ly))
       enddo
+      endif
 c
 1001	format(i4,f11.4,3f11.4,2f8.1,f9.4,$)
 1002  format(f15.4,3f11.4,2f8.1,f9.4)
       return
-	end
+      end
