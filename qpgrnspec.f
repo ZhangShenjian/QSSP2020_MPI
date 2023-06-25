@@ -885,7 +885,7 @@ c         2D array to 1D array
      &         0,1,MPI_COMM_WORLD,ierr_mpi)
         endif
 c         barrier
-        call synchronize_all()
+        call MPI_BARRIER(MPI_COMM_WORLD, ierr_mpi)
         deallocate(ul0s,vl0s,wl0s,el0s,fl0s,gl0s,pl0s,ql0s)
       enddo
       if(myrank==0)then

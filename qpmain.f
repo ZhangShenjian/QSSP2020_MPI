@@ -59,7 +59,7 @@ c
       close(10)
       endif
 c      
-      call synchronize_all()
+      call MPI_BARRIER(MPI_COMM_WORLD, ierr_mpi)
 c
 c     IMPORTANT: broadcast parameters getting from input file
 c  
