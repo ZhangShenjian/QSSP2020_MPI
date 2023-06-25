@@ -6,7 +6,7 @@
       external difmat
 c
       integer*4 nrrmax
-      parameter(nrrmax=512)
+      parameter(nrrmax=262144)
 c
       integer*4 i,j,k,irr,nrr,nn
       real*8 rr,drr,epsilon
