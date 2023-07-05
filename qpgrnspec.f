@@ -30,7 +30,6 @@ c     MPI parameters
 c
       call MPI_Comm_rank(MPI_COMM_WORLD, myrank, ierr_mpi)
       call MPI_Comm_size(MPI_COMM_WORLD, numprocs, ierr_mpi)
-      write(*,*)"rank is",myrank
 c
       if(ig.eq.igfirst)then
         allocate(disk(0:ldegmax),stat=ierr)
@@ -593,26 +592,15 @@ c
 c
 c         1. Vertical single force (F3=1)
 c
-          if(lys.lt.lyob)then
-            ul0(ldeg,1)=(0.d0,0.d0)
-            vl0(ldeg,1)=(0.d0,0.d0)
-            wl0(ldeg,1)=(0.d0,0.d0)
-            el0(ldeg,1)=(0.d0,0.d0)
-            fl0(ldeg,1)=(0.d0,0.d0)
-            gl0(ldeg,1)=(0.d0,0.d0)
-            pl0(ldeg,1)=(0.d0,0.d0)
-            ql0(ldeg,1)=(0.d0,0.d0)
-          else
-            cs2=dcmplx(-disk(ldeg),0.d0)
-            ul0(ldeg,1)=cs2*ypsv(1,2)
-            vl0(ldeg,1)=cs2*ypsv(3,2)
-            wl0(ldeg,1)=(0.d0,0.d0)
-            el0(ldeg,1)=cs2*ypsv(2,2)
-            fl0(ldeg,1)=cs2*ypsv(4,2)
-            gl0(ldeg,1)=(0.d0,0.d0)
-            pl0(ldeg,1)=cs2*ypsv(5,2)
-            ql0(ldeg,1)=cs2*(cg1*ypsv(1,2)-cg5*ypsv(5,2)+ypsv(6,2))
-          endif
+          cs2=dcmplx(-disk(ldeg),0.d0)
+          ul0(ldeg,1)=cs2*ypsv(1,2)
+          vl0(ldeg,1)=cs2*ypsv(3,2)
+          wl0(ldeg,1)=(0.d0,0.d0)
+          el0(ldeg,1)=cs2*ypsv(2,2)
+          fl0(ldeg,1)=cs2*ypsv(4,2)
+          gl0(ldeg,1)=(0.d0,0.d0)
+          pl0(ldeg,1)=cs2*ypsv(5,2)
+          ql0(ldeg,1)=cs2*(cg1*ypsv(1,2)-cg5*ypsv(5,2)+ypsv(6,2))
 c
 c         2. Explosion (M11=M22=M33=1)
 c
