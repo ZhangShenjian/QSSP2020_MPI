@@ -1,11 +1,13 @@
       subroutine qppsvkern(f,ldeg,ypsv)
       use qpalloc
+      use mpi
       implicit none
 c
 c     calculation of response function in frequency-wavelength domain
 c     ldeg: harmonic degree
 c     ypsv(6,4): psv solution vector (complex)
 c
+      integer*4 myrank, numprocs, ierr_mpi
       integer*4 ldeg
       real*8 f
       complex*16 ypsv(6,4)
@@ -16,6 +18,9 @@ c
 c
       complex*16 c1,c2
       data c1,c2/(1.d0,0.d0),(2.d0,0.d0)/
+c
+      call MPI_Comm_rank(MPI_COMM_WORLD, myrank, ierr_mpi)
+      call MPI_Comm_size(MPI_COMM_WORLD, numprocs, ierr_mpi)
 c
       do istp=1,4
         do i=1,6
@@ -179,6 +184,11 @@ c
             cps(4,ly)=-(cldeg+c1)*cruplw
           endif
           call qpsmatc(ldeg,ly,lylw,lwup)
+          if(f>0 .and. f<1.0E-4)then
+            write(*,*)ldeg,ly, mas4x4up(1,1,ly)
+            write(*,*)ldeg,ly, mas4x4lw(1,1,ly)
+            write(*,*)ldeg,ly, mas4x4inv(1,1,ly)
+          endif
         enddo
         do ly=max0(lyup,lyob),min0(lycm-1,lylw)
           if(rrlw(ly).gt.0.d0)then
@@ -250,7 +260,7 @@ c
             cps(6,ly)=-(cldeg+c1)*cruplw
           endif
           call qpsmat(ldeg,ly,lylw,lwup)
-        enddo
+        enddo       
         call qpsprop(ypsv,ldeg,lyup,lylw)
       endif
       return

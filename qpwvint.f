@@ -1,4 +1,5 @@
       subroutine qpwvint(ierr)
+      use mpi
       use qpalloc
       implicit none
       integer*4 ierr
@@ -6,17 +7,41 @@ c
       integer*4 i,j,k,id,is,ir,ig,nd,nt0,nf0,ntcut0,nfcut0,ishift
       integer*4 lf,lf1,istp,ldeg,ldegf,ldeg0
       integer*4 istat,ldegup,ldeglw,ldegneed
+      integer*4 nfapp,irank,lfs,ldegfs,ntotal,nfr
+      integer*4 myrank,numprocs,ierr_mpi
+      integer*4 bcast_integer(5)
       real*8 depsarc,dis0,anorm,slwcut
       real*8 f,dt0,df0,rn,re,azi,bazi,bazi0
+      real*8 bcast_real(2)
       complex*16 cll1,cp0,cp1,cp2,wavelet,muer,lamr,ksir,rrr,srt,srp
       complex*16 cfac,ca,cb,dur,dut,dup,eii,dgr,dgt,dgp
       complex*16 urdr,urdt,urdp,utdr,utdt,utdp,updr,updt,updp
       complex*16 rot(3,3),rtz(3,3),enz(3,3),swp(3,3)
+      complex*16,allocatable :: ul0s(:),vl0s(:),wl0s(:)
+      complex*16,allocatable :: el0s(:),fl0s(:),gl0s(:)
+      complex*16,allocatable :: pl0s(:),ql0s(:)
+      complex*16,allocatable :: ul0t(:,:),vl0t(:,:),wl0t(:,:)
+      complex*16,allocatable :: el0t(:,:),fl0t(:,:),gl0t(:,:)
+      complex*16,allocatable :: pl0t(:,:),ql0t(:,:)
+      complex*16,allocatable :: ue0(:,:),un0(:,:),uz0(:,:)
+      complex*16,allocatable :: ge0(:,:),gn0(:,:),gz0(:,:)
+      complex*16,allocatable :: roe0(:,:),ron0(:,:),roz0(:,:)
+      complex*16,allocatable :: uee0(:,:),uen0(:,:),uez0(:,:)
+      complex*16,allocatable :: unn0(:,:),unz0(:,:),uzz0(:,:)
+      complex*16,allocatable :: see0(:,:),sen0(:,:),sez0(:,:)
+      complex*16,allocatable :: snn0(:,:),snz0(:,:),szz0(:,:)
       logical*2 fullwave
 c
       complex*16 c1,c2,c3
       data c1,c2,c3/(1.d0,0.d0),(2.d0,0.d0),(3.d0,0.d0)/
 c
+c     initialize
+c
+      call MPI_COMM_RANK(MPI_COMM_WORLD, myrank, ierr_mpi)
+      call MPI_COMM_SIZE(MPI_COMM_WORLD, numprocs, ierr_mpi)
+      bcast_integer(:) = 0
+      bcast_real(:) = 0.d0
+c      
       allocate(tap(0:ldegmax),stat=ierr)
       if(ierr.ne.0)stop ' Error in qpwvint: tap not allocated!'
       allocate(ldegtap(4,ns,nr),stat=ierr)
@@ -204,6 +229,11 @@ c
         call swavelet(trss(is),df,fi,nf,wvf(1,is))
       enddo
 c
+c     allocate resulting array at each process
+c     and then reduce them to the master process
+c
+c     spectral solution at each receiver U(f,r)
+c
       do lf=1,nf
         do ir=1,nr
           ue(lf,ir)=(0.d0,0.d0)
@@ -236,31 +266,61 @@ c
       enddo
 c
       do ig=1,ngrn
+c
         if(nsg(ig).le.0)goto 500
-        write(*,'(a)')' '
-        write(*,'(a,i4,a,f5.1,a)')' processing ',1+isg2(ig)-isg1(ig),
-     &    ' point source(s) at depth ',(grndep(ig)-depatmos)/KM2M,' km'
-        write(*,'(a)')' open Green function data base: '
+c
+c       read GF set at master process
+c       global parameters
+c
+        if(myrank .eq. 0)then
+          write(*,'(a)')' '
+          write(*,'(a,i4,a,f5.1,a)')' processing ',1+isg2(ig)-isg1(ig),
+     &      ' point source(s) at depth ',(grndep(ig)-depatmos)/KM2M,
+     &      ' km'
+          write(*,'(a)')' open Green function data base: '
      &              //specfile(ig)(1:40)
-        write(*,'(a)')' ... please wait ...'
+          write(*,'(a)')' ... please wait ...'
 c
-        open(21,file=uspecfile(ig),form='unformatted',status='old')
-        open(22,file=vspecfile(ig),form='unformatted',status='old')
-        open(23,file=wspecfile(ig),form='unformatted',status='old')
-        open(24,file=especfile(ig),form='unformatted',status='old')
-        open(25,file=fspecfile(ig),form='unformatted',status='old')
-        open(26,file=gspecfile(ig),form='unformatted',status='old')
-        open(27,file=pspecfile(ig),form='unformatted',status='old')
-        open(28,file=qspecfile(ig),form='unformatted',status='old')
+          open(21,file=uspecfile(ig),form='unformatted',status='old')
+          open(22,file=vspecfile(ig),form='unformatted',status='old')
+          open(23,file=wspecfile(ig),form='unformatted',status='old')
+          open(24,file=especfile(ig),form='unformatted',status='old')
+          open(25,file=fspecfile(ig),form='unformatted',status='old')
+          open(26,file=gspecfile(ig),form='unformatted',status='old')
+          open(27,file=pspecfile(ig),form='unformatted',status='old')
+          open(28,file=qspecfile(ig),form='unformatted',status='old')
 c
-        read(21)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
-        read(22)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
-        read(23)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
-        read(24)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
-        read(25)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
-        read(26)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
-        read(27)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
-        read(28)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
+          read(21)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
+          read(22)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
+          read(23)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
+          read(24)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
+          read(25)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
+          read(26)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
+          read(27)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
+          read(28)nt0,ntcut0,dt0,nf0,nfcut0,df0,ldegup
+c
+          bcast_integer = (/nt0,ntcut0,nf0,nfcut0,ldegup/)
+          bcast_real = (/dt0,df0/)
+        endif
+c
+c       broadcast to all processes
+c
+        call bcast_all_i(bcast_integer, 5)
+        call bcast_all_r(bcast_real, 2)
+c
+c       receive at slaver processes
+c
+        if(myrank .ne. 0)then
+          nt0 = bcast_integer(1)
+          ntcut0 = bcast_integer(2)
+          nf0 = bcast_integer(3)
+          nfcut0 = bcast_integer(4)
+          ldegup = bcast_integer(5)
+          dt0 = bcast_real(1)
+          df0 = bcast_real(2)
+        endif
+c
+c       begin computation at all process
 c
         if(ntcut0.ne.ntcut.or.dabs(dt0-dt).gt.1.0d-06*dt.or.
      &     nfcut0.lt.nfcut.or.dabs(df0-df).gt.1.0d-06*df)then
@@ -289,6 +349,8 @@ c
           stop
         endif
 c
+c       spherical harmonics factor for a given frequency
+c
         do istp=1,6
           do ldeg=0,ldegmax
             ul0(ldeg,istp)=(0.d0,0.d0)
@@ -310,31 +372,206 @@ c
         endif
         fullwave=slwlwcut.le.0.d0.and.slwupcut.ge.dmin1(slwmax,slwcut)
 c
-        do lf=1,nfcut
+c       parallel computation begins
+c       ensure evenly disivible
+c
+        if(mod(nfcut,numprocs)==0)then
+          nfapp = nfcut
+        else
+          nfapp = (floor(float(nfcut)/float(numprocs))+1)*numprocs
+        endif
+c
+c       different freq. samples in different processes
+c
+        do lf=myrank+1,nfapp,numprocs
+          if(lf .gt. nfcut) goto 400
           f=dble(lf-1)*df
 c
           call qpqmodel(f)
           muer=cmuup(lyr)
           lamr=claup(lyr)
           ksir=lamr+c2*muer
+c         initalize arrays for passing data
+          ntotal=(ldegmax+1)*6
+          allocate(ul0s(ntotal),stat=ierr)
+          if(ierr.ne.0)stop 'Error in qpwvint: ul0s not allocated!'
+          allocate(vl0s(ntotal),stat=ierr)
+          if(ierr.ne.0)stop 'Error in qpwvint: vl0s not allocated!'
+          allocate(wl0s(ntotal),stat=ierr)
+          if(ierr.ne.0)stop 'Error in qpwvint: wl0s not allocated!'
+          allocate(el0s(ntotal),stat=ierr)
+          if(ierr.ne.0)stop 'Error in qpwvint: el0s not allocated!'
+          allocate(fl0s(ntotal),stat=ierr)
+          if(ierr.ne.0)stop 'Error in qpwvint: fl0s not allocated!'
+          allocate(gl0s(ntotal),stat=ierr)
+          if(ierr.ne.0)stop 'Error in qpwvint: gl0s not allocated!'
+          allocate(pl0s(ntotal),stat=ierr)
+          if(ierr.ne.0)stop 'Error in qpwvint: pl0s not allocated!'
+          allocate(ql0s(ntotal),stat=ierr)
+          if(ierr.ne.0)stop 'Error in qpwvint: ql0s not allocated!' 
 c
-          read(21)ldegf
-          read(22)ldegf
-          read(23)ldegf
-          read(24)ldegf
-          read(25)ldegf
-          read(26)ldegf
-          read(27)ldegf
-          read(28)ldegf
+c         read GF at master process
 c
-          read(21)((ul0(ldeg,istp),ldeg=0,ldegf),istp=1,6)              !Y1
-          read(22)((vl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)              !Y3
-          read(23)((wl0(ldeg,istp),ldeg=0,ldegf),istp=4,6)              !Y7
-          read(24)((el0(ldeg,istp),ldeg=0,ldegf),istp=1,6)              !Y2
-          read(25)((fl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)              !Y4
-          read(26)((gl0(ldeg,istp),ldeg=0,ldegf),istp=4,6)              !Y8
-          read(27)((pl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)              !Y5
-          read(28)((ql0(ldeg,istp),ldeg=0,ldegf),istp=1,6)              !dY5/dr derived from Y1, Y5 and Y6
+          if(myrank.eq.0)then
+            read(21)ldegf
+            read(22)ldegf
+            read(23)ldegf
+            read(24)ldegf
+            read(25)ldegf
+            read(26)ldegf
+            read(27)ldegf
+            read(28)ldegf
+c
+            read(21)((ul0(ldeg,istp),ldeg=0,ldegf),istp=1,6)     !Y1
+            read(22)((vl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)     !Y3
+            read(23)((wl0(ldeg,istp),ldeg=0,ldegf),istp=4,6)     !Y7
+            read(24)((el0(ldeg,istp),ldeg=0,ldegf),istp=1,6)     !Y2
+            read(25)((fl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)     !Y4
+            read(26)((gl0(ldeg,istp),ldeg=0,ldegf),istp=4,6)     !Y8
+            read(27)((pl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)     !Y5
+            read(28)((ql0(ldeg,istp),ldeg=0,ldegf),istp=1,6)     !dY5/dr derived from Y1, Y5 and Y6
+c
+            do irank=1,numprocs-1
+              lfs = lf+irank
+c             make sure f-sample is under nfcut
+              if(lfs .le. nfcut)then
+c               initalize arrays for temporally storing data
+                allocate(ul0t(0:ldegmax,6),stat=ierr)
+                if(ierr.ne.0)stop'Error in qpwvint: ul0s not allocated!'
+                allocate(vl0t(0:ldegmax,6),stat=ierr)
+                if(ierr.ne.0)stop'Error in qpwvint: vl0s not allocated!'
+                allocate(wl0t(0:ldegmax,6),stat=ierr)
+                if(ierr.ne.0)stop'Error in qpwvint: wl0s not allocated!'
+                allocate(el0t(0:ldegmax,6),stat=ierr)
+                if(ierr.ne.0)stop'Error in qpwvint: el0s not allocated!'
+                allocate(fl0t(0:ldegmax,6),stat=ierr)
+                if(ierr.ne.0)stop'Error in qpwvint: fl0s not allocated!'
+                allocate(gl0t(0:ldegmax,6),stat=ierr)
+                if(ierr.ne.0)stop'Error in qpwvint: gl0s not allocated!'
+                allocate(pl0t(0:ldegmax,6),stat=ierr)
+                if(ierr.ne.0)stop'Error in qpwvint: pl0s not allocated!'
+                allocate(ql0t(0:ldegmax,6),stat=ierr)
+                if(ierr.ne.0)stop'Error in qpwvint: ql0s not allocated!' 
+c
+                do istp=1,6
+                  do ldeg=0,ldegmax
+                    ul0t(ldeg,istp)=(0.d0,0.d0)
+                    vl0t(ldeg,istp)=(0.d0,0.d0)
+                    wl0t(ldeg,istp)=(0.d0,0.d0)
+                    el0t(ldeg,istp)=(0.d0,0.d0)
+                    fl0t(ldeg,istp)=(0.d0,0.d0)
+                    gl0t(ldeg,istp)=(0.d0,0.d0)
+                    pl0t(ldeg,istp)=(0.d0,0.d0)
+                    ql0t(ldeg,istp)=(0.d0,0.d0)
+                  enddo
+                enddo
+                read(21)ldegfs
+                read(22)ldegfs
+                read(23)ldegfs
+                read(24)ldegfs
+                read(25)ldegfs
+                read(26)ldegfs
+                read(27)ldegfs
+                read(28)ldegfs
+c
+                read(21)((ul0t(ldeg,istp),ldeg=0,ldegfs),istp=1,6)              !Y1
+                read(22)((vl0t(ldeg,istp),ldeg=0,ldegfs),istp=1,6)              !Y3
+                read(23)((wl0t(ldeg,istp),ldeg=0,ldegfs),istp=4,6)              !Y7
+                read(24)((el0t(ldeg,istp),ldeg=0,ldegfs),istp=1,6)              !Y2
+                read(25)((fl0t(ldeg,istp),ldeg=0,ldegfs),istp=1,6)              !Y4
+                read(26)((gl0t(ldeg,istp),ldeg=0,ldegfs),istp=4,6)              !Y8
+                read(27)((pl0t(ldeg,istp),ldeg=0,ldegfs),istp=1,6)              !Y5
+                read(28)((ql0t(ldeg,istp),ldeg=0,ldegfs),istp=1,6)           !dY5/dr derived from Y1, Y5 and Y6
+c
+                do k=1,6
+                  do j=0,ldegmax
+                    ul0s(j+1+(k-1)*(ldegmax+1)) = ul0t(j,k)
+                    vl0s(j+1+(k-1)*(ldegmax+1)) = vl0t(j,k)
+                    wl0s(j+1+(k-1)*(ldegmax+1)) = wl0t(j,k)
+                    el0s(j+1+(k-1)*(ldegmax+1)) = el0t(j,k)
+                    fl0s(j+1+(k-1)*(ldegmax+1)) = fl0t(j,k)
+                    gl0s(j+1+(k-1)*(ldegmax+1)) = gl0t(j,k)
+                    pl0s(j+1+(k-1)*(ldegmax+1)) = pl0t(j,k)
+                    ql0s(j+1+(k-1)*(ldegmax+1)) = ql0t(j,k)
+                  enddo
+                enddo
+c                
+                call MPI_SEND(lfs,1,MPI_INT,irank,1,
+     &               MPI_COMM_WORLD,ierr_mpi)          
+                call MPI_SEND(ldegfs,1,MPI_INT,irank,1,
+     &               MPI_COMM_WORLD,ierr_mpi)
+                call MPI_SEND(ul0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &               irank,1,MPI_COMM_WORLD,ierr_mpi)
+                call MPI_SEND(vl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &               irank,1,MPI_COMM_WORLD,ierr_mpi)        
+                call MPI_SEND(wl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &               irank,1,MPI_COMM_WORLD,ierr_mpi)
+                call MPI_SEND(el0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &               irank,1,MPI_COMM_WORLD,ierr_mpi)
+                call MPI_SEND(fl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &               irank,1,MPI_COMM_WORLD,ierr_mpi)        
+                call MPI_SEND(gl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &               irank,1,MPI_COMM_WORLD,ierr_mpi)
+                call MPI_SEND(pl0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &               irank,1,MPI_COMM_WORLD,ierr_mpi)
+                call MPI_SEND(ql0s,ntotal,MPI_DOUBLE_COMPLEX,
+     &               irank,1,MPI_COMM_WORLD,ierr_mpi)
+c
+                deallocate(ul0t,vl0t,wl0t,el0t,fl0t,gl0t,pl0t,ql0t)
+              endif
+            enddo
+c
+c         receive data at slaver processes
+c
+          else
+            if(lf.le.nfcut)then
+              call MPI_RECV(lfs,1,MPI_INT,0,1,
+     &             MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+              call MPI_RECV(ldegf,1,MPI_INT,0,1,
+     &             MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+              call MPI_RECV(ul0s,ntotal,MPI_DOUBLE_COMPLEX,0,1,
+     &             MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+              call MPI_RECV(vl0s,ntotal,MPI_DOUBLE_COMPLEX,0,1,
+     &             MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi) 
+              call MPI_RECV(wl0s,ntotal,MPI_DOUBLE_COMPLEX,0,1,
+     &             MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi) 
+              call MPI_RECV(el0s,ntotal,MPI_DOUBLE_COMPLEX,0,1,
+     &             MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi) 
+              call MPI_RECV(fl0s,ntotal,MPI_DOUBLE_COMPLEX,0,1,
+     &             MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+              call MPI_RECV(gl0s,ntotal,MPI_DOUBLE_COMPLEX,0,1,
+     &             MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi) 
+              call MPI_RECV(pl0s,ntotal,MPI_DOUBLE_COMPLEX,0,1,
+     &             MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi) 
+              call MPI_RECV(ql0s,ntotal,MPI_DOUBLE_COMPLEX,0,1,
+     &             MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
+c             check if data passing is correct
+              if(lf .ne. lfs)then
+                write(*,*)'Error in qpwvint: lf doesnot match at',
+     &          myrank
+                stop
+              endif
+c             1D to 2D
+              do k=1,6
+                do j=0,ldegmax
+                  ul0(j,k)=ul0s(j+1+(k-1)*(ldegmax+1))
+                  vl0(j,k)=vl0s(j+1+(k-1)*(ldegmax+1))
+                  wl0(j,k)=wl0s(j+1+(k-1)*(ldegmax+1))
+                  el0(j,k)=el0s(j+1+(k-1)*(ldegmax+1))
+                  fl0(j,k)=fl0s(j+1+(k-1)*(ldegmax+1))
+                  gl0(j,k)=gl0s(j+1+(k-1)*(ldegmax+1))
+                  pl0(j,k)=pl0s(j+1+(k-1)*(ldegmax+1))
+                  ql0(j,k)=ql0s(j+1+(k-1)*(ldegmax+1))
+                enddo
+              enddo
+            endif
+          endif
+c
+          deallocate(ul0s,vl0s,wl0s,el0s,fl0s,gl0s,pl0s,ql0s)
+c          
+c         end of GF set read-in
+c
+c         determine l-degree range
 c
           ldegneed=0
           ldeglw=ldegmax
@@ -1082,24 +1319,197 @@ c
               enddo
             enddo
           enddo
+c         is->ir->ldeg
+c         out -> inner
           write(*,'(i6,a,f10.4,3(a,i5))')lf,'.',1.0d+03*f,
      &                        ' mHz: spectra read: ',ldegf,
      &                        ', used: ',ldeglw,' - ',ldegneed
+400       continue
         enddo
+c       lf, frequency sample
 c
-        close(21)
-        close(22)
-        close(23)
-        close(24)
-        close(25)
-        close(26)
-        close(27)
-        close(28)
-        write(*,'(i6,a)')lf-1,' spectra read from '
+        if(myrank .eq. 0)then
+          close(21)
+          close(22)
+          close(23)
+          close(24)
+          close(25)
+          close(26)
+          close(27)
+          close(28)
+          write(*,'(i6,a)')nfcut,' spectra read from '
      &                      //specfile(ig)(1:40)
+        endif
+        call synchronize_all()
 500     continue
       enddo
+c     ig, index of GF
 c
+c     Reduce all process to the master process
+c
+      if(myrank .eq. 0)then
+        allocate(ue0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: ue0 not allocated!'
+        allocate(un0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: un0 not allocated!'
+        allocate(uz0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: uz0 not allocated!'
+c
+        allocate(ge0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: ge0 not allocated!'
+        allocate(gn0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: gn0 not allocated!'
+        allocate(gz0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: gz0 not allocated!'
+c
+        allocate(roe0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: roe0 not allocated!'
+        allocate(ron0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: ron0 not allocated!'
+        allocate(roz0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: roz0 not allocated!'
+c
+        allocate(uee0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: uee0 not allocated!'
+        allocate(uen0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: uen0 not allocated!'
+        allocate(uez0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: uez0 not allocated!'
+        allocate(unn0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: unn0 not allocated!'
+        allocate(unz0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: unz0 not allocated!'
+        allocate(uzz0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: uzz0 not allocated!'
+c
+        allocate(see0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: see0 not allocated!'
+        allocate(sen0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: sen0 not allocated!'
+        allocate(sez0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: sez0 not allocated!'
+        allocate(snn0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: snn0 not allocated!'
+        allocate(snz0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: snz0 not allocated!'
+        allocate(szz0(nf,nr),stat=ierr)
+        if(ierr.ne.0)stop ' Error in qpwvint: szz0 not allocated!'
+c
+        ue0(:,:)=(0.d0,0.d0)
+        un0(:,:)=(0.d0,0.d0)
+        uz0(:,:)=(0.d0,0.d0)
+c
+        ge0(:,:)=(0.d0,0.d0)
+        gn0(:,:)=(0.d0,0.d0)
+        gz0(:,:)=(0.d0,0.d0)
+c
+        roe0(:,:)=(0.d0,0.d0)
+        ron0(:,:)=(0.d0,0.d0)
+        roz0(:,:)=(0.d0,0.d0)
+c
+        uee0(:,:)=(0.d0,0.d0)
+        uen0(:,:)=(0.d0,0.d0)
+        uez0(:,:)=(0.d0,0.d0)
+        unn0(:,:)=(0.d0,0.d0)
+        unz0(:,:)=(0.d0,0.d0)
+        uzz0(:,:)=(0.d0,0.d0)
+c
+        see0(:,:)=(0.d0,0.d0)
+        sen0(:,:)=(0.d0,0.d0)
+        sez0(:,:)=(0.d0,0.d0)
+        snn0(:,:)=(0.d0,0.d0)
+        snz0(:,:)=(0.d0,0.d0)
+        szz0(:,:)=(0.d0,0.d0)
+      endif
+c
+      nfr = nf*nr
+      call MPI_REDUCE(ue,ue0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(un,un0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(uz,uz0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+c
+      call MPI_REDUCE(ge,ge0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(gn,gn0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(gz,gz0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+c
+      call MPI_REDUCE(roe,roe0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(ron,ron0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(roz,roz0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+c
+      call MPI_REDUCE(uee,uee0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(uen,uen0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(uez,uez0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(unn,unn0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(unz,unz0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(uzz,uzz0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+c
+      call MPI_REDUCE(see,see0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(sen,sen0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(sez,sez0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(snn,snn0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(snz,snz0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+      call MPI_REDUCE(szz,szz0,nfr,MPI_DOUBLE_COMPLEX,MPI_SUM,
+     &      0, MPI_COMM_WORLD, ierr_mpi)
+c
+      if(myrank .eq. 0)then
+c       make result at the master process         
+        do lf=1,nf
+          do ir=1,nr
+            ue(lf,ir)=ue0(lf,ir)
+            un(lf,ir)=un0(lf,ir)
+            uz(lf,ir)=uz0(lf,ir)
+c
+            ge(lf,ir)=ge0(lf,ir)
+            gn(lf,ir)=gn0(lf,ir)
+            gz(lf,ir)=gz0(lf,ir)
+c
+            roe(lf,ir)=roe0(lf,ir)
+            ron(lf,ir)=ron0(lf,ir)
+            roz(lf,ir)=roz0(lf,ir)
+c
+            uee(lf,ir)=uee0(lf,ir)
+            uen(lf,ir)=uen0(lf,ir)
+            uez(lf,ir)=uez0(lf,ir)
+            unn(lf,ir)=unn0(lf,ir)
+            unz(lf,ir)=unz0(lf,ir)
+            uzz(lf,ir)=uzz0(lf,ir)
+c
+            see(lf,ir)=see0(lf,ir)
+            sen(lf,ir)=sen0(lf,ir)
+            sez(lf,ir)=sez0(lf,ir)
+            snn(lf,ir)=snn0(lf,ir)
+            snz(lf,ir)=snz0(lf,ir)
+            szz(lf,ir)=szz0(lf,ir)
+          enddo
+        enddo
+        deallocate(ue0,un0,uz0,ge0,gn0,gz0,roe0,ron0,roz0,
+     &               uee0,uen0,uez0,unn0,unz0,uzz0,
+     &               see0,sen0,sez0,snn0,snz0,szz0)
+      endif
+c
+      if(myrank .eq. 0)then
+        deallocate(specfile,uspecfile,vspecfile,wspecfile,
+     &           especfile,fspecfile,gspecfile,pspecfile,qspecfile)
+      endif
       deallocate(plm,tap,ldegtap,wvf,
      &           expl,clvd,ss12,ss11,ds31,ds23,sf1,sf2,sf3,sfr,sft,sfp,
      &           mrr,mtt,mpp,mrt,mtp,lats,lons,deps,togs,trss,
@@ -1109,8 +1519,6 @@ c
      &           ept0lm,eptalm,eptblm,epp0lm,eppalm,eppblm,
      &           lyupp,lyups,lyupt,lylwp,lylws,lylwt,
      &           grndep,grnsel,lygrn,
-     &           specfile,uspecfile,vspecfile,wspecfile,
-     &           especfile,fspecfile,gspecfile,pspecfile,qspecfile,
      &           isg1,isg2,nsg)
 c
       return

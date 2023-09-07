@@ -14,54 +14,62 @@ c     MPI variables
 c
 c     Initialize MPI
 c
-      call MPI_Init(ierr_mpi)
+      call MPI_INIT(ierr_mpi)
 c     Get the rank and number of processes
-      call MPI_Comm_rank(MPI_COMM_WORLD, myrank, ierr_mpi)
-      call MPI_Comm_size(MPI_COMM_WORLD, numprocs, ierr_mpi)
-c      write(*,*)'rank',myrank, 'of', numprocs, 'processors'
+      call MPI_COMM_RANK(MPI_COMM_WORLD, myrank, ierr_mpi)
+      call MPI_COMM_SIZE(MPI_COMM_WORLD, numprocs, ierr_mpi)
 c
-      if (myrank == 0) then
+c     I/O at master process
+      if (myrank .eq. 0) then
 c     read input file file
-      write(*,*)'######################################################'
-      write(*,*)'#                                                    #'
-      write(*,*)'#               Welcome to the program               #'
-      write(*,*)'#                                                    #'
-      write(*,*)'#    QQQQ         SSSSS        SSSSS       PPPPP     #'
-      write(*,*)'#   Q    Q       S            S            P    P    #'
-      write(*,*)'#   Q    Q        SSSS         SSSS        PPPPP     #'
-      write(*,*)'#   Q   QQ            S            S       P         #'
-      write(*,*)'#    QQQQQ       SSSSS        SSSSS        P         #'
-      write(*,*)'#                                                    #'
-      write(*,*)'#          Complete synthetic seismograms            #'
-      write(*,*)'#      (displacement/strain/stress/rotation)         #' 
-      write(*,*)'#                     based on                       #'
-      write(*,*)'#          a spherically symmetric earth model       #'
-      write(*,*)'#                                                    #'
-      write(*,*)'#                  (Version 2020)                    #'
-      write(*,*)'#   Last update (correction of errors): 2020-04-14   #'
-      write(*,*)'#                                                    #'
-      write(*,*)'#                      by                            #'
-      write(*,*)'#                 Rongjiang Wang                     #'
-      write(*,*)'#              (wang@gfz-potsdam.de)                 #'
-      write(*,*)'#                                                    #'
-      write(*,*)'#              Helmholtz Centre Potsdam              #'
-      write(*,*)'#    GFZ German Research Centre for Geosciences      #'
-      write(*,*)'#           Last modified: September 2017            #'
-      write(*,*)'#                                                    #'
-      write(*,*)'######################################################'
+c      write(*,*)'#####################################################'
+c      write(*,*)'#                                                   #'
+c      write(*,*)'#               Welcome to the program              #'
+c      write(*,*)'#                                                   #'
+c      write(*,*)'#    QQQQ         SSSSS        SSSSS       PPPPP    #'
+c      write(*,*)'#   Q    Q       S            S            P    P   #'
+c      write(*,*)'#   Q    Q        SSSS         SSSS        PPPPP    #'
+c      write(*,*)'#   Q   QQ            S            S       P        #'
+c      write(*,*)'#    QQQQQ       SSSSS        SSSSS        P        #'
+c      write(*,*)'#                                                   #'
+c      write(*,*)'#          Complete synthetic seismograms           #'
+c      write(*,*)'#      (displacement/strain/stress/rotation)        #' 
+c      write(*,*)'#                     based on                      #'
+c      write(*,*)'#          a spherically symmetric earth model      #'
+c      write(*,*)'#                                                   #'
+c      write(*,*)'#             (Parallel Version 2023)               #'
+c      write(*,*)'#               Update: 2023-09-07                  #'
+c      write(*,*)'#                                                   #'
+c      write(*,*)'#                by Shenjian Zhang                  #'
+c      write(*,*)'#            (zhangsj@sustech.edu.cn)               #'
+c      write(*,*)'#                                                   #'
+c      write(*,*)'#              (Basic Version 2020)                 #'
+c      write(*,*)'#   Last update (correction of errors): 2020-04-14  #'
+c      write(*,*)'#                                                   #'
+c      write(*,*)'#                      by                           #'
+c      write(*,*)'#                 Rongjiang Wang                    #'
+c      write(*,*)'#              (wang@gfz-potsdam.de)                #'
+c      write(*,*)'#                                                   #'
+c      write(*,*)'#              Helmholtz Centre Potsdam             #'
+c      write(*,*)'#    GFZ German Research Centre for Geosciences     #'
+c      write(*,*)'#           Last modified: September 2017           #'
+c      write(*,*)'#                                                   #'
+c      write(*,*)'#####################################################'
       write(*,*)'                                                      '
       write(*,'(a,$)')' the input data file is '
       read(*,'(a)')inputfile
       runtime=time()
+c
+c     read parameter file
 c
       open(10,file=inputfile,status='old')
       call qpgetinp(10)
       close(10)
       endif
 c      
-      call MPI_BARRIER(MPI_COMM_WORLD, ierr_mpi)
+      call synchronize_all()
 c
-c     IMPORTANT: broadcast parameters getting from input file
+c     IMPORTANT: broadcast parameters to all processes
 c  
       call bcast_all_parameters()
 c
@@ -69,9 +77,11 @@ c     initalize arrays not used in 'qpgetinp'
 c
       call qpinitarr(ierr)
 c
-c     computation at each process
+c     begin computation at each process
 c
       call qpsublayer(ierr)
+c
+c     compute Green's function sets
 c
       igfirst=0
       do ig=ngrn,1,-1
@@ -89,11 +99,19 @@ c
           call qpgrnspec(ig)
         endif
       enddo
-c      
-c      call qpwvint(ierr)
-c      call qpfftinv(ierr)
+c     
+c     compute spectral solutions from spherical harmonic factors in
+c     Green's function sets
 c
-      if(myrank==0)then
+      call qpwvint(ierr)
+c
+c     Obtain time series by backward FFT
+c
+      if(myrank .eq. 0)then
+        call qpfftinv(ierr)
+      endif
+c
+      if(myrank.eq.0)then
       runtime=time()-runtime
       write(*,'(a)')' #############################################'
       write(*,'(a)')' #                                           #'
@@ -106,7 +124,7 @@ c
 c
 c     Finalize MPI
 c
-      call MPI_Finalize(ierr_mpi) 
+      call MPI_FINALIZE(ierr_mpi) 
 c
       stop
       end

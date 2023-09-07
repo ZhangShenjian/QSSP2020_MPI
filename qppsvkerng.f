@@ -1,11 +1,13 @@
       subroutine qppsvkerng(f,ldeg,ypsv)
       use qpalloc
+      use mpi
       implicit none
 c
 c     calculation of response function in frequency-wavelength domain
 c     ldeg: harmonic degree
 c     ypsv(6,4): psv solution vector (complex) with gravity effect
 c
+      integer*4 myrank, numprocs, ierr_mpi
       integer*4 ldeg
       real*8 f
       complex*16 ypsv(6,4)
@@ -17,6 +19,9 @@ c
 c
       complex*16 c1,c2
       data c1,c2/(1.d0,0.d0),(2.d0,0.d0)/
+c
+      call MPI_Comm_rank(MPI_COMM_WORLD, myrank, ierr_mpi)
+      call MPI_Comm_size(MPI_COMM_WORLD, numprocs, ierr_mpi)
 c
       do istp=1,4
         do i=1,6

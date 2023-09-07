@@ -1,11 +1,13 @@
       subroutine qpsprop(ypsv,ldeg,lyup,lylw)
       use qpalloc
+      use mpi
       implicit none
 c
 c     calculation of spheroidal response
 c     ypsv(6,4): solution vector (complex)
 c
       integer*4 ldeg,lyup,lylw
+      integer*4 myrank, numprocs, ierr_mpi
       complex*16 ypsv(6,4)
 c
 c     work space
@@ -22,6 +24,8 @@ c
       complex*16 c2,c3,c6
       data c2,c3,c6/(2.d0,0.d0),(3.d0,0.d0),(6.d0,0.d0)/
 c
+      call MPI_Comm_rank(MPI_COMM_WORLD, myrank, ierr_mpi)
+      call MPI_Comm_size(MPI_COMM_WORLD, numprocs, ierr_mpi)
 c===============================================================================
 c
 c     propagation from surface to atmosphere/ocean bottom
@@ -80,6 +84,9 @@ c
         orthc(2,2)=cc0(2,1)/cdet
 c
         call caxcb(cc0,orthc,4,2,2,cc1)
+        if(myrank==1)then
+c          write(*,*)ly,cc1(:,1)
+        endif
         if(ly.ge.lyr)then
 c
 c         orthonormalization of the receiver vectors
@@ -104,6 +111,10 @@ c
         cc1(4,2)=(1.d0,0.d0)
 c
         call caxcb(mas4x4lw(1,1,ly),cc1,4,4,2,yupc)
+c        if(myrank==1)then
+c          write(*,*)ly,yupc(1,1)
+c          write(*,*)ly,mas4x4lw(1,:,ly)
+c        endif
 c
         if(ly.eq.lyr-1)then
           do j=1,2
@@ -159,6 +170,10 @@ c
           if(lyr.eq.lyup)call cmemcpy(yup,y0,18)
         endif
       endif
+c      if(myrank==1)then
+c        write(*,*)lys,lyr, lyob, lyup, lylw
+c        write(*,*)ldeg,y0(1,1)
+c      endif
 c
 c===============================================================================
 c

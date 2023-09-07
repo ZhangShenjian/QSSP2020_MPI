@@ -28,8 +28,8 @@ c
 c
 c     MPI parameters
 c
-      call MPI_Comm_rank(MPI_COMM_WORLD, myrank, ierr_mpi)
-      call MPI_Comm_size(MPI_COMM_WORLD, numprocs, ierr_mpi)
+      call MPI_COMM_RANK(MPI_COMM_WORLD, myrank, ierr_mpi)
+      call MPI_COMM_SIZE(MPI_COMM_WORLD, numprocs, ierr_mpi)
 c
       if(ig.eq.igfirst)then
         allocate(disk(0:ldegmax),stat=ierr)
@@ -141,9 +141,9 @@ c
         enddo
       endif
 c
-c     write on mater process
+c     write at master process
 c
-      if(myrank==0)then
+      if(myrank.eq.0)then
         open(21,file=uspecfile(ig),form='unformatted',status='unknown')
         open(22,file=vspecfile(ig),form='unformatted',status='unknown')
         open(23,file=wspecfile(ig),form='unformatted',status='unknown')
@@ -215,13 +215,7 @@ c
 c
       ldegup=min0(ldegcut,max0(ldeg0,idint(rearth*omi*slwcut)))
 c
-      if(fgr.gt.0.d0.or.ldeggr.gt.0)then
-        do ly=1,ly0
-          do ldeg=0,ldegup
-            nruku(ldeg,ly)=10
-          enddo
-        enddo
-      endif
+c     I/O at master process
 c
       if(myrank==0)then
         write(*,*)' '
@@ -260,7 +254,7 @@ c
         enddo
       enddo
 c
-c     Distribute freq.-array to each process
+c     distribute freq.-array to each process
 c
 c     ensure evenly disivible
       if(mod(nfcut,numprocs)==0)then
@@ -275,6 +269,14 @@ c
         comi=dcmplx(PI2*f,PI2*fi)
         comi2=comi*comi
         call qpqmodel(f)
+c
+        if(fgr.gt.0.d0.or.ldeggr.gt.0)then
+          do ly=1,ly0
+            do ldeg=0,ldegup
+              nruku(ldeg,ly)=10
+            enddo
+          enddo
+        endif
 c
         do ly=1,ly0
           kp(ly)=comi/cvp(ly)
@@ -650,7 +652,7 @@ c
 c
 c         4. Horizontal single force (F1=1)
 c
-          if(ldeg.lt.1.or.lys.lt.lyob)then
+          if(ldeg.lt.1 .or. lys.lt.lyob)then
             ul0(ldeg,4)=(0.d0,0.d0)
             vl0(ldeg,4)=(0.d0,0.d0)
             wl0(ldeg,4)=(0.d0,0.d0)
@@ -723,9 +725,11 @@ c
           endif
         enddo
 c
-c       send all result to master process and write on master proc.
+c       send all results to master process and write on it
 c
-c       initalize arrays for sending data
+c       initalize arrays for sending data,
+c       use 1D array instead of 2D array to avoid memory mistake
+c
         ntotal=(ldegmax+1)*6
         allocate(ul0s(ntotal),stat=ierr)
         if(ierr.ne.0)stop 'Error in qpgrnspec: ul0s not allocated!'
@@ -744,9 +748,10 @@ c       initalize arrays for sending data
         allocate(ql0s(ntotal),stat=ierr)
         if(ierr.ne.0)stop 'Error in qpgrnspec: ql0s not allocated!'
 c
-        if(myrank==0) then
-c        write(*,*)ldegmax
-c       write result computed on master proc.        
+c       write result computed at master proc.
+c
+        if(myrank.eq.0) then
+c               
           write(*,'(i6,a,f12.4,a,i5,a,2(f7.2,a))')lf,'.',1.0d+03*f,
      &         ' mHz: cut-off degree = ',ldegf,
      &         ', start depth = ',depst1,' - ',depst2,' km'
@@ -767,7 +772,8 @@ c
           write(26)((gl0(ldeg,istp),ldeg=0,ldegf),istp=4,6)               ! Ysh2 (or Y8)
           write(27)((pl0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! Ypsv5
           write(28)((ql0(ldeg,istp),ldeg=0,ldegf),istp=1,6)               ! dYpsv5/dr
-c       recevive results from other proc.
+          
+c       recevive results from slaver proc.
           do irank=1,numprocs-1
             call MPI_RECV(lfs,1,MPI_INT,irank,1,
      &         MPI_COMM_WORLD,MPI_STATUS_IGNORE,ierr_mpi)
@@ -809,7 +815,7 @@ c           write only when f<fcut
                   ql0(j,k)=ql0s(j+1+(k-1)*(ldegmax+1))
                 enddo
               enddo
-c             write result
+c             write results
               write(*,'(i6,a,f12.4,a,i5,a,2(f7.2,a))')lfs,'.',
      &         1.0d+03*fs,' mHz: cut-off degree = ',ldegfs,
      &         ', start depth = ',depst1,' - ',depst2,' km'
@@ -832,6 +838,9 @@ c
               write(28)((ql0(ldeg,istp),ldeg=0,ldegfs),istp=1,6)               ! dYpsv5/dr
             endif
           enddo
+c
+c       send results at slaver proc. to master proc.
+c
         else
 c         2D array to 1D array
           do k=1,6
@@ -846,6 +855,7 @@ c         2D array to 1D array
               ql0s(j+1+(k-1)*(ldegmax+1)) = ql0(j,k)
             enddo
           enddo
+c         data passing
           call MPI_SEND(lf,1,MPI_INT,0,1,MPI_COMM_WORLD,ierr_mpi)
           call MPI_SEND(ldegf,1,MPI_INT,0,1,
      &         MPI_COMM_WORLD,ierr_mpi)
@@ -872,11 +882,14 @@ c         2D array to 1D array
           call MPI_SEND(ql0s,ntotal,MPI_DOUBLE_COMPLEX,
      &         0,1,MPI_COMM_WORLD,ierr_mpi)
         endif
-c         barrier
-        call MPI_BARRIER(MPI_COMM_WORLD, ierr_mpi)
+c       barrier
+        call synchronize_all()
         deallocate(ul0s,vl0s,wl0s,el0s,fl0s,gl0s,pl0s,ql0s)
       enddo
-      if(myrank==0)then
+c
+c     finalize result writing
+c
+      if(myrank.eq.0)then
         close(21)
         close(22)
         close(23)

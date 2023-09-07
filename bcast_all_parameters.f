@@ -1,5 +1,7 @@
       subroutine bcast_all_parameters()
-
+c
+c     broadcast parameters get from 'qpgetinp.f' to all proc.
+c
       use mpi
       use qpalloc
       implicit none
@@ -16,23 +18,27 @@ c
       logical*2 bcast_logical(nparam_l)
 c
 c     initialize
-      call MPI_Comm_rank(MPI_COMM_WORLD, myrank, ierr)
+      call MPI_COMM_RANK(MPI_COMM_WORLD, myrank, ierr)
+c
       bcast_integer(:) = 0
       bcast_real(:) = 0.d0
       bcast_logical(:) = .false.
 c
-c     master process
+c     arrange data at master process
+c
       if(myrank .eq. 0) then
           bcast_integer = (/ngrn,nt,ntcut,ntcutout,nf,nfcut,nbpf,
-     & lyadd,ipatha,ipathb,ldeggr,ldegmin,ldegcut,ldegmax,
-     & nr,ns,l0/)
+     &    lyadd,ipatha,ipathb,ldeggr,ldegmin,ldegcut,ldegmax,
+     &    nr,ns,l0/)
           bcast_real = (/dt,dtout,df,fi,fcut,fgr,rratmos,depatmos,
-     & rearth,rr0,minpath,maxpath,
-     & slwmax,slwlwcut,slwupcut,f1corner,f2corner,
-     & dpr,qsmin,togsmin/)
+     &    rearth,rr0,minpath,maxpath,
+     &    slwmax,slwlwcut,slwupcut,f1corner,f2corner,
+     &    dpr,qsmin,togsmin/)
           bcast_logical = (/selpsv,selsh,nogravity,freesurf,
-     & dispersion/)
+     &    dispersion/)
       endif
+c
+c     broadcast temporal arrays
 c
       call bcast_all_i(bcast_integer, nparam_i)
       call bcast_all_r(bcast_real, nparam_r)
@@ -40,6 +46,8 @@ c
 c
       call bcast_all_i(icmp, 11)
 c 
+c     receive at slaver processes
+c
       if(myrank .ne. 0) then
           ngrn = bcast_integer(1)
           nt = bcast_integer(2)
@@ -89,7 +97,8 @@ c
           call qplocalinit()
       endif
 c
-
+c     broadcast existing arrays
+c 
       call bcast_all_i(grnsel, ngrn)
       call bcast_all_i(isg1, ngrn)
       call bcast_all_i(isg2, ngrn)
@@ -134,7 +143,5 @@ c
       call bcast_all_r(ro0lw, l0)
       call bcast_all_r(qp0lw, l0)
       call bcast_all_r(qs0lw, l0)
-      
-      write(*,*)"grnsel",grnsel(1),ngrn,myrank
 c
       end subroutine bcast_all_parameters
