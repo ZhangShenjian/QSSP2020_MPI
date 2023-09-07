@@ -40,6 +40,21 @@ c
 c
 c
 c
+      subroutine bcast_all_c(buffer, countval)
+      use mpi
+      implicit none
+      integer*4 countval
+      complex*16 buffer(countval)
+      integer*4 ierr_mpi
+c
+      call MPI_BCAST(buffer, countval, MPI_DOUBLE_COMPLEX, 0,
+     &     MPI_COMM_WORLD, ierr_mpi)
+c
+
+      end subroutine bcast_all_c
+c
+c
+c
       subroutine synchronize_all()
       use mpi
 c
