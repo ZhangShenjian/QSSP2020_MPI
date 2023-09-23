@@ -159,7 +159,8 @@ c
         depsarc=PI2/dble(ldegmax)+dmax1(minpath,deps(is))/rearth
         dis0=5.d0*depsarc
 c
-        do ir=1,nr
+        do ir=myrank+1,nrapp,numprocs
+          if(ir.gt.nr) goto 700
           call disazi(1.d0,lats(is),lons(is),
      &                     latr(ir),lonr(ir),rn,re)
 c
@@ -196,10 +197,12 @@ c
           csa(is,ir)=dcmplx(dcos(azi),0.d0)
           ss2a(is,ir)=dcmplx(dsin(2.d0*azi),0.d0)
           cs2a(is,ir)=dcmplx(dcos(2.d0*azi),0.d0)
+700       continue        
         enddo
       enddo
 c
-      do ir=1,nr
+      do ir=myrank+1,nrapp,numprocs
+        if(ir.gt.nr) goto 800
         do is=1,ns
           call disazi(1.d0,latr(ir),lonr(ir),
      &                     lats(is),lons(is),rn,re)
@@ -215,6 +218,7 @@ c
           ssb(is,ir)=dcmplx(dsin(bazi),0.d0)
           csb(is,ir)=dcmplx(dcos(bazi),0.d0)
         enddo
+800     continue
       enddo
 c
       do is=1,ns
@@ -335,8 +339,8 @@ c
 c
         nd=0
         do is=isg1(ig),isg2(ig)
-          do ir=1,nr
-            nd=max0(nd,idr(is,ir))
+          do ir=myrank+1,nrapp,numprocs
+            if(ir .le. nr)nd=max0(nd,idr(is,ir))
           enddo
         enddo
 c
@@ -907,7 +911,7 @@ c
             wavelet=wvf(lf,is)
      &             *cdexp(-dcmplx(-fi,f)*dcmplx(PI2*togs(is),0.d0))
             do ir=myrank+1,nrapp,numprocs
-              if(ir.gt.nr) goto 700
+              if(ir.gt.nr) goto 900
               id=idr(is,ir)
 c
               call taper(ldegtap(1,is,ir),ldegtap(4,is,ir),tap(0))
@@ -1157,7 +1161,7 @@ c
      &                    +lamr*eii+(2.d0,0.d0)*muer*enz(3,3)
 c
               enddo
-700           continue
+900           continue
             enddo
           enddo
           if(myrank .eq.0)then
